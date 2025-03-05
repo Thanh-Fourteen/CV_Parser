@@ -1,0 +1,6 @@
+test.py
+__pycache__/
+weights/
+logs/
+.vscode/
+checkpoints/
