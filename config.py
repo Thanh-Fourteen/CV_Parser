@@ -19,7 +19,7 @@ class DBConfig(object):
 
     # Backbone network architecture
     # Supported values are: ResNet50
-    BACKBONE = "ResNet50"
+    BACKBONE = "ResNet"
 
 
     # train
