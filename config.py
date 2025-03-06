@@ -9,24 +9,11 @@ import datetime
 
 
 class DBConfig(object):
-
-    STEPS_PER_EPOCH = 10
-
-    # Number of validation steps to run at the end of every training epoch.
-    # A bigger number improves accuracy of validation stats, but slows
-    # down the training.
-    VALIDATION_STEPS = 20
-
-    # Backbone network architecture
-    # Supported values are: ResNet50
     BACKBONE = "ResNet"
-
 
     # train
     EPOCHS = 3
     INITIAL_EPOCH = 0
-    # PRETRAINED_MODEL_PATH = '/Users/macbook/DBNet/db_167_1.9499_1.9947.h5'
-    # PRETRAINED_MODEL_PATH = "weights/tf_model.h5"
     PRETRAINED_MODEL_PATH = ''
     LOG_DIR = 'datasets/logs'
     CHECKPOINT_DIR = 'checkpoints'

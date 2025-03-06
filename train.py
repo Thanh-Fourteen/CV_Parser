@@ -58,11 +58,11 @@ callbacks_list = [checkpoint_callback, tensorboard_callback, MetricsCallback()]
 
 model.fit(
     x=train_generator,
-    steps_per_epoch=cfg.STEPS_PER_EPOCH,
+    steps_per_epoch=len(train_generator) // cfg.BATCH_SIZE,
     initial_epoch=cfg.INITIAL_EPOCH,
     epochs=cfg.EPOCHS,
     verbose=1,
     callbacks=callbacks_list,
     validation_data=val_generator,
-    validation_steps=cfg.VALIDATION_STEPS
+    validation_steps=len(val_generator) // cfg.BATCH_SIZE
 )
