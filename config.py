@@ -27,7 +27,7 @@ class DBConfig(object):
     VAL_DATA_PATH = 'datasets/data/val.json'
 
     IMAGE_SIZE = 640
-    BATCH_SIZE = 3
+    BATCH_SIZE = 24
 
     MIN_TEXT_SIZE = 8
     SHRINK_RATIO = 0.4

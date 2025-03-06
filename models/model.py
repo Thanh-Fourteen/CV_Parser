@@ -73,7 +73,7 @@ def DBNet(cfg, k=50, model='training', backbone = "ResNet"):
     p = KL.BatchNormalization()(p)
     p = KL.ReLU()(p)
     binarize_map  = KL.Conv2DTranspose(1, (2, 2), strides=(2, 2), kernel_initializer='he_normal',
-                                       activation='sigmoid', name='binarize_map')(p)
+                                       activation='sigmoid', name='bm')(p)
 
     # threshold map
     t = KL.Conv2D(64, (3, 3), padding='same', kernel_initializer='he_normal', use_bias=False)(fuse)
@@ -86,7 +86,7 @@ def DBNet(cfg, k=50, model='training', backbone = "ResNet"):
                                         activation='sigmoid', name='threshold_map')(t)
 
     # thresh binary map
-    thresh_binary = KL.Lambda(lambda x: 1 / (1 + tf.exp(-k * (x[0] - x[1]))), name='thresh_binary')([binarize_map, threshold_map])
+    thresh_binary = KL.Lambda(lambda x: 1 / (1 + tf.exp(-k * (x[0] - x[1]))), name='tb')([binarize_map, threshold_map])
     if model == 'training':
         input_gt = KL.Input(shape=[cfg.IMAGE_SIZE, cfg.IMAGE_SIZE], name='input_gt')
         input_mask = KL.Input(shape=[cfg.IMAGE_SIZE, cfg.IMAGE_SIZE], name='input_mask')

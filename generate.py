@@ -84,6 +84,12 @@ def compute_distance(xs, ys, point_1, point_2):
     result[cosin < 0] = np.sqrt(np.fmin(square_distance_1, square_distance_2))[cosin < 0]
     return result
 
+def get_dataset_size(cfg, train_or_val='train'):
+    data_path = cfg.TRAIN_DATA_PATH if train_or_val == 'train' else cfg.VAL_DATA_PATH
+    with open(data_path, encoding='utf8') as f:
+        data = json.load(f)
+    return len(data["data_list"])
+
 def generate(cfg, train_or_val='train'):
     def init_input():
         batch_images = np.zeros([cfg.BATCH_SIZE, cfg.IMAGE_SIZE, cfg.IMAGE_SIZE, 3], dtype=np.float32)
