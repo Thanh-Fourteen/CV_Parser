@@ -17,9 +17,7 @@ from transform import transform, crop, resize
 from config import DBConfig
 cfg = DBConfig()
 
-
 mean = [103.939, 116.779, 123.68]
-
 
 def show_polys(image, anns, window_name):
     for ann in anns:
@@ -28,7 +26,6 @@ def show_polys(image, anns, window_name):
 
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     cv2.imshow(window_name, image)
-
 
 def draw_thresh_map(polygon, canvas, mask, shrink_ratio=0.4):
     polygon = np.array(polygon)
@@ -73,7 +70,6 @@ def draw_thresh_map(polygon, canvas, mask, shrink_ratio=0.4):
             xmin_valid - xmin:xmax_valid - xmin],
         canvas[ymin_valid:ymax_valid, xmin_valid:xmax_valid])
 
-
 def compute_distance(xs, ys, point_1, point_2):
     square_distance_1 = np.square(xs - point_1[0]) + np.square(ys - point_1[1])
     square_distance_2 = np.square(xs - point_2[0]) + np.square(ys - point_2[1])
@@ -88,7 +84,6 @@ def compute_distance(xs, ys, point_1, point_2):
     result[cosin < 0] = np.sqrt(np.fmin(square_distance_1, square_distance_2))[cosin < 0]
     return result
 
-
 def generate(cfg, train_or_val='train'):
     def init_input():
         batch_images = np.zeros([cfg.BATCH_SIZE, cfg.IMAGE_SIZE, cfg.IMAGE_SIZE, 3], dtype=np.float32)
@@ -96,8 +91,8 @@ def generate(cfg, train_or_val='train'):
         batch_masks = np.zeros([cfg.BATCH_SIZE, cfg.IMAGE_SIZE, cfg.IMAGE_SIZE], dtype=np.float32)
         batch_thresh_maps = np.zeros([cfg.BATCH_SIZE, cfg.IMAGE_SIZE, cfg.IMAGE_SIZE], dtype=np.float32)
         batch_thresh_masks = np.zeros([cfg.BATCH_SIZE, cfg.IMAGE_SIZE, cfg.IMAGE_SIZE], dtype=np.float32)
-        # batch_loss = np.zeros([cfg.BATCH_SIZE, ], dtype=np.float32)
-        return [batch_images, batch_gts, batch_masks, batch_thresh_maps, batch_thresh_masks]
+        batch_dummy = np.zeros([cfg.BATCH_SIZE], dtype=np.float32)  # Thêm batch_dummy
+        return [batch_images, batch_gts, batch_masks, batch_thresh_maps, batch_thresh_masks, batch_dummy]
 
     data_path = cfg.TRAIN_DATA_PATH if train_or_val=='train' else cfg.VAL_DATA_PATH
 
@@ -140,23 +135,16 @@ def generate(cfg, train_or_val='train'):
                 np.random.shuffle(indices)
             current_idx = 0
         if b == 0:
-            batch_images, batch_gts, batch_masks, batch_thresh_maps, batch_thresh_masks = init_input()
+            batch_images, batch_gts, batch_masks, batch_thresh_maps, batch_thresh_masks, batch_dummy = init_input()
         i = indices[current_idx]
         image_path = image_paths[i]
         anns = all_anns[i]
-        """
-        [{'text': 'chinese', 'poly': [[17.86985870232934, 29.2253341902275], [18.465581783660582, 7.2334012599376365], [525.2796724953414, 20.9621104524324], [524.6839494140104, 42.954043382722375]]},
-        {'text': 'chinese', 'poly': [[9.746362138723043, 329.1153286941807], [10.667025082598343, 295.12779598373265], [589.454714475228, 310.8061443514931], [588.5340515313526, 344.79367706194114]]}]
-        """
         image = cv2.imread(image_path)
-        # show_polys(image.copy(), anns, 'before_aug')
         if train_or_val=='train':
             transform_aug = transform_aug.to_deterministic()
             image, anns = transform(transform_aug, image, anns)
             image, anns = crop(image, anns)
         image, anns = resize(cfg.IMAGE_SIZE, image, anns)
-        # show_polys(image.copy(), anns, 'after_aug')
-        # cv2.waitKey(0)
         anns = [ann for ann in anns if Polygon(ann['poly']).is_valid]
         gt = np.zeros((cfg.IMAGE_SIZE, cfg.IMAGE_SIZE), dtype=np.float32)
         mask = np.ones((cfg.IMAGE_SIZE, cfg.IMAGE_SIZE), dtype=np.float32)
@@ -167,7 +155,6 @@ def generate(cfg, train_or_val='train'):
             height = max(poly[:, 1]) - min(poly[:, 1])
             width = max(poly[:, 0]) - min(poly[:, 0])
             polygon = Polygon(poly)
-            # generate gt and mask
             if polygon.area < 1 or min(height, width) < cfg.MIN_TEXT_SIZE or ann['text'] in cfg.IGNORE_TEXT:
                 cv2.fillPoly(mask, poly.astype(np.int32)[np.newaxis, :, :], 0)
                 continue
@@ -187,7 +174,6 @@ def generate(cfg, train_or_val='train'):
                     else:
                         cv2.fillPoly(mask, poly.astype(np.int32)[np.newaxis, :, :], 0)
                         continue
-            # generate thresh map and thresh mask
             draw_thresh_map(ann['poly'], thresh_map, thresh_mask, shrink_ratio=cfg.SHRINK_RATIO)
         thresh_map = thresh_map * (cfg.THRESH_MAX - cfg.THRESH_MIN) + cfg.THRESH_MIN
 
@@ -198,13 +184,12 @@ def generate(cfg, train_or_val='train'):
         batch_masks[b] = mask
         batch_thresh_maps[b] = thresh_map
         batch_thresh_masks[b] = thresh_mask
+        batch_dummy[b] = 0  # Gán giá trị cho batch_dummy (không cần thay đổi, chỉ là placeholder)
 
         b += 1
         current_idx += 1
         if b == cfg.BATCH_SIZE:
             inputs = [batch_images, batch_gts, batch_masks, batch_thresh_maps, batch_thresh_masks]
-            # outputs = batch_loss
-            outputs = []
+            outputs = [batch_dummy, batch_gts, batch_gts]  # 3 outputs khớp với model
             yield inputs, outputs
             b = 0
-

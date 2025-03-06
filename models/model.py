@@ -86,8 +86,7 @@ def DBNet(cfg, k=50, model='training', backbone = "ResNet"):
                                         activation='sigmoid', name='threshold_map')(t)
 
     # thresh binary map
-    thresh_binary = KL.Lambda(lambda x: 1 / (1 + tf.exp(-k * (x[0] - x[1]))))([binarize_map, threshold_map])
-
+    thresh_binary = KL.Lambda(lambda x: 1 / (1 + tf.exp(-k * (x[0] - x[1]))), name='thresh_binary')([binarize_map, threshold_map])
     if model == 'training':
         input_gt = KL.Input(shape=[cfg.IMAGE_SIZE, cfg.IMAGE_SIZE], name='input_gt')
         input_mask = KL.Input(shape=[cfg.IMAGE_SIZE, cfg.IMAGE_SIZE], name='input_mask')
@@ -97,14 +96,15 @@ def DBNet(cfg, k=50, model='training', backbone = "ResNet"):
         loss_layer = KL.Lambda(db_loss, name='db_loss')(
             [input_gt, input_mask, input_thresh, input_thresh_mask, binarize_map, thresh_binary, threshold_map])
 
-        db_model = K.Model(inputs=[input_image, input_gt, input_mask, input_thresh, input_thresh_mask],
-                           outputs=[loss_layer])
+        db_model = K.Model(
+            inputs=[input_image, input_gt, input_mask, input_thresh, input_thresh_mask],
+            outputs=[loss_layer, binarize_map, thresh_binary]
+        )
 
         loss_names = ["db_loss"]
         for layer_name in loss_names:
             layer = db_model.get_layer(layer_name)
             db_model.add_loss(layer.output)
-            # db_model.add_metric(layer.output, name=layer_name, aggregation="mean")
     else:
         db_model = K.Model(inputs=input_image,
                            outputs=binarize_map)

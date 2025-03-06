@@ -65,11 +65,18 @@ def compute_cls_acc(pred, gt, mask):
 def db_loss(args, alpha=5.0, beta=10.0, ohem_ratio=3.0):
     input_gt, input_mask, input_thresh, input_thresh_mask, binarize_map, thresh_binary, threshold_map = args
 
+    # tf.print("binarize_map min:", tf.reduce_min(binarize_map), "max:", tf.reduce_max(binarize_map))
+    # tf.print("thresh_binary min:", tf.reduce_min(thresh_binary), "max:", tf.reduce_max(thresh_binary))
+
     threshold_loss = l1_loss(threshold_map, input_thresh, input_thresh_mask)
     binarize_loss, dice_loss_weights = balanced_crossentropy_loss(binarize_map, input_gt, input_mask, negative_ratio=ohem_ratio)
     thresh_binary_loss = dice_loss(thresh_binary, input_gt, input_mask, dice_loss_weights)
 
-    model_loss = alpha * binarize_loss + beta * threshold_loss + thresh_binary_loss
+    # tf.print("threshold_loss:", threshold_loss)
+    # tf.print("binarize_loss:", binarize_loss)
+    # tf.print("thresh_binary_loss:", thresh_binary_loss)
+
+    model_loss = 5.0 * binarize_loss + 10.0 * threshold_loss + 5.0 * thresh_binary_loss  # Tăng trọng số cho thresh_binary_loss    tf.print("total_loss:", model_loss)
     return model_loss
 
 

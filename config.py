@@ -10,7 +10,7 @@ import datetime
 
 class DBConfig(object):
 
-    STEPS_PER_EPOCH = 1
+    STEPS_PER_EPOCH = 10
 
     # Number of validation steps to run at the end of every training epoch.
     # A bigger number improves accuracy of validation stats, but slows
@@ -23,11 +23,11 @@ class DBConfig(object):
 
 
     # train
-    EPOCHS = 30
+    EPOCHS = 3
     INITIAL_EPOCH = 0
-    # PRETRAINED_MODEL_PATH = 'weights/db_167_1.9499_1.9947.h5'
-    PRETRAINED_MODEL_PATH = "weights/tf_model.h5"
-    # PRETRAINED_MODEL_PATH = ''
+    # PRETRAINED_MODEL_PATH = '/Users/macbook/DBNet/db_167_1.9499_1.9947.h5'
+    # PRETRAINED_MODEL_PATH = "weights/tf_model.h5"
+    PRETRAINED_MODEL_PATH = ''
     LOG_DIR = 'datasets/logs'
     CHECKPOINT_DIR = 'checkpoints'
     LEARNING_RATE = 1e-4
@@ -39,7 +39,7 @@ class DBConfig(object):
     TRAIN_DATA_PATH = 'datasets/data/train.json'
     VAL_DATA_PATH = 'datasets/data/val.json'
 
-    IMAGE_SIZE = 64
+    IMAGE_SIZE = 640
     BATCH_SIZE = 3
 
     MIN_TEXT_SIZE = 8
