@@ -6,10 +6,9 @@ import random
 from tqdm import tqdm
 
 
-val_ratio = 0.01
+val_ratio = 0.3
 
-
-ann_path = "annotations.json"
+ann_path = r"D:\FPT\AI\Major7\DAT301m\CVPaser\DBNet\10.json"
 
 with open(ann_path, "r", encoding="utf8") as f:
     datas = json.load(f)
