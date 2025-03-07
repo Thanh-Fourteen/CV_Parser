@@ -9,12 +9,12 @@ import datetime
 
 
 class DBConfig(object):
-    BACKBONE = "EfficientNet"
+    BACKBONE = "ResNet"
 
     # train
     EPOCHS = 3
     INITIAL_EPOCH = 0
-    PRETRAINED_MODEL_PATH = ''
+    PRETRAINED_MODEL_PATH = 'weights/db_167_1.9499_1.9947.h5'
     LOG_DIR = 'datasets/logs'
     CHECKPOINT_DIR = 'checkpoints'
     LEARNING_RATE = 1e-4

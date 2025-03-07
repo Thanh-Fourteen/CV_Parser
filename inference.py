@@ -125,13 +125,12 @@ def main():
     BOX_THRESH = 0.5
     mean = np.array([103.939, 116.779, 123.68])
 
-    model_path = "weights/db_167_1.9499_1.9947.h5"
-    # model_path = "weights/tf_model.h5"
+    model_path = cfg.PRETRAINED_MODEL_PATH
 
     img_dir = 'datasets/test/input'
     img_names = os.listdir(img_dir)
 
-    model = DBNet(cfg, model='inference')
+    model = DBNet(cfg, model='inference', backbone=cfg.BACKBONE)
     model.load_weights(model_path, by_name=True, skip_mismatch=True)
     for img_name in tqdm(img_names):
         img_path = osp.join(img_dir, img_name)
