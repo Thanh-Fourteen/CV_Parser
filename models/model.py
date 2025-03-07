@@ -9,6 +9,7 @@ import tensorflow as tf
 
 from models.backbones.resnet import ResNet50
 from models.backbones.ConvNeXt import ConvNeXtB
+from models.backbones.EfficientNet import EfficientNetB0
 from models.losses import db_loss
 
 
@@ -21,6 +22,8 @@ def DBNet(cfg, k=50, model='training', backbone = "ResNet"):
         backbone = ResNet50(inputs=input_image, include_top=False, freeze_bn=True)
     elif (backbone == "ConvNeXt"):
         backbone = ConvNeXtB(inputs=input_image, include_top=False, freeze_bn=True)
+    elif (backbone == "EfficientNet"):
+        backbone = EfficientNetB0(inputs=input_image, include_top=False, freeze_bn=True)
     C2, C3, C4, C5 = backbone.outputs
 
     # in2

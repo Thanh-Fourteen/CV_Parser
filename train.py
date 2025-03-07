@@ -26,7 +26,7 @@ with strategy.scope():
     model = DBNet(cfg, model='training', backbone= cfg.BACKBONE)
     if cfg.PRETRAINED_MODEL_PATH:
         model.load_weights(cfg.PRETRAINED_MODEL_PATH, by_name=True, skip_mismatch=True)
-    
+
     model.compile(
         optimizer=optimizers.Adam(learning_rate=cfg.LEARNING_RATE),
         metrics={
