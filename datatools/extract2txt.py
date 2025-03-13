@@ -54,12 +54,12 @@ def process_image(img_name, img_dir, output_text_dir, model, box_thresh=0.5):
 
     print(f"✔ Extracted text saved: {text_file_path}")
 
-def extract_text_from_cv(model_path, img_dir, output_text_dir, box_thresh=0.5, max_workers=None):
+def extract_text_from_cv(model_path, img_dir, output_text_dir, backbone, box_thresh=0.5, max_workers=None):
     """Trích xuất văn bản từ CV sử dụng đa luồng."""
     os.makedirs(output_text_dir, exist_ok=True)
     
     # Khởi tạo mô hình
-    model = DBNet(cfg, model='inference')
+    model = DBNet(cfg, model='inference',backbone=backbone)
     model.load_weights(model_path, by_name=True, skip_mismatch=True)
 
     # Lấy danh sách ảnh
@@ -89,9 +89,9 @@ def extract_text_from_cv(model_path, img_dir, output_text_dir, box_thresh=0.5, m
 
 if __name__ == '__main__':
     extract_text_from_cv(
-        model_path="/Users/macbook/DBNet/db_167_1.9499_1.9947.h5",
-        img_dir="datasets/test/input",
-        output_text_dir="datasets/test/output_text",
+        model_path = os.path.join(os.getcwd(), "db_19_2.6895_3.3356.h5"),
+        img_dir=os.path.join(os.getcwd(), "Arts resumes"),
+        output_text_dir="output_text",
         box_thresh=0.5,
         max_workers=None  # Sẽ tự động chọn số luồng tối ưu
     )
