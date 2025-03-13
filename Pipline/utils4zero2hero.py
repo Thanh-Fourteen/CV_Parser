@@ -16,19 +16,18 @@ import threading
 import matplotlib.pyplot as plt
 import multiprocessing
 from datatools.extract2txt import extract_text_from_cv
+
 class CVPipeline:
-    def __init__(self, image_input_dir,text_output_dir,summary_output_dir,db_path, model_path):
+    def __init__(self, image_input_dir, text_output_dir, summary_output_dir, db_path, model_path):
         self.image_input_dir = image_input_dir
         self.text_output_dir = text_output_dir
         self.summary_output_dir = summary_output_dir
         self.db_path = db_path
-        self.model_path = model_path  # Đường dẫn tới trọng số mô hình DBNet
+        self.model_path = model_path
 
-        # Tạo các thư mục đầu ra nếu chưa tồn tại
         os.makedirs(self.text_output_dir, exist_ok=True)
         os.makedirs(self.summary_output_dir, exist_ok=True)
 
-        # Khởi tạo các công cụ
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
         self.model = BertModel.from_pretrained('bert-base-multilingual-cased')
         self.summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", 
@@ -54,19 +53,163 @@ class CVPipeline:
         self.conn.commit()
         print("🗑️ Database đã được xóa.")
 
-    # Bước 1: Trích xuất văn bản từ ảnh bằng DBNet
     def process_images(self):
         print("📸 Bắt đầu trích xuất văn bản từ ảnh bằng DBNet...")
         extract_text_from_cv(
             model_path=self.model_path,
             img_dir=self.image_input_dir,
+            backbone="EfficientNet",
             output_text_dir=self.text_output_dir,
             box_thresh=0.5,
-            max_workers=self.max_workers
+            max_workers=8
         )
         print(f"✔ Văn bản đã được trích xuất và lưu tại: {self.text_output_dir}")
 
-    # Bước 2: Tóm tắt văn bản
+    def store_candidate(self, img_path):
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO cvs (file_name) VALUES (?)", (img_path,))
+            conn.commit()
+            conn.close()
+
+    def store_candidates(self, cv_data):
+        print(f"📂 Đang lưu {len(cv_data)} hồ sơ...")
+        # Lấy danh sách tất cả file ảnh từ image_input_dir
+        image_files = [os.path.join(root, f) for root, _, files in os.walk(self.image_input_dir) 
+                       for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.webp'))]
+        
+        # Tạo mapping từ tên file không đuôi sang đường dẫn đầy đủ
+        img_path_map = {os.path.splitext(os.path.basename(f))[0]: f for f in image_files}
+        
+        # Chỉ lưu các đường dẫn ảnh tương ứng với cv_data
+        img_paths = []
+        for file_name in cv_data.keys():
+            base_name = file_name  # Tên file không đuôi từ cv_data
+            if base_name in img_path_map:
+                img_paths.append(img_path_map[base_name])
+            else:
+                print(f"⚠️ Không tìm thấy ảnh tương ứng cho {file_name}")
+        
+        if not img_paths:
+            print("⚠️ Không có ảnh nào được tìm thấy để lưu!")
+            return
+        
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            list(tqdm(executor.map(self.store_candidate, img_paths), total=len(img_paths), desc="📂 Đang lưu CV"))
+
+    def process_embedding(self, cv_id, img_path, cv_text):
+        embedding = self.get_bert_embedding(cv_text)
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("UPDATE cvs SET embedding = ? WHERE id = ?", (embedding.tobytes(), cv_id))
+            conn.commit()
+            conn.close()
+
+    def add_embeddings(self, cv_data):
+        self.cursor.execute("SELECT id, file_name FROM cvs WHERE embedding IS NULL")
+        # Sử dụng basename của file_name (đường dẫn đầy đủ) để ánh xạ với cv_data
+        cv_list = [(cv_id, img_path, cv_data.get(os.path.splitext(os.path.basename(img_path))[0], "")) 
+                   for cv_id, img_path in self.cursor.fetchall()]
+        if not cv_list:
+            print("⚠️ Không có CV nào cần tạo embedding!")
+            return
+        print(f"🔄 Đang tạo embeddings cho {len(cv_list)} CV...")
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            list(tqdm(executor.map(lambda x: self.process_embedding(*x), cv_list), total=len(cv_list), desc="🔄 Đang xử lý embeddings"))
+
+    def compare_job_description(self, job_description, top_candidate):
+        job_embedding = self.get_bert_embedding(job_description)
+        self.cursor.execute("SELECT id, file_name, embedding FROM cvs")
+        cvs = self.cursor.fetchall()
+        if not cvs:
+            print("⚠️ Không có dữ liệu trong database!")
+            return [], []
+        
+        cv_embeddings = np.vstack([np.frombuffer(cv[2], dtype=np.float32) for cv in cvs])
+        similarities = np.dot(cv_embeddings, job_embedding) / (np.linalg.norm(cv_embeddings, axis=1) * np.linalg.norm(job_embedding))
+        
+        top_n = min(top_candidate, len(cvs))
+        top_indices = np.argsort(similarities)[-top_n:][::-1]
+        
+        print(f"\n🎯 **Top {top_n} ứng viên phù hợp nhất:**")
+        for idx in top_indices:
+            print(f"⭐ **ID:** {cvs[idx][0]} | 📝 **File:** {cvs[idx][1]} | 🔥 **Độ tương đồng:** {similarities[idx]:.4f}")
+        return cvs, similarities
+
+    def visualize_candidates(self, job_description=None, top_candidate=1, cvs=None, similarities=None):
+        """
+        Hiển thị top N ứng viên từ cơ sở dữ liệu hoặc từ dữ liệu được cung cấp sẵn.
+        - Nếu job_description được cung cấp: tính toán similarities từ cơ sở dữ liệu.
+        - Nếu cvs và similarities được cung cấp: sử dụng trực tiếp để hiển thị.
+        """
+        if job_description is not None:  # Tính toán từ cơ sở dữ liệu
+            job_embedding = self.get_bert_embedding(job_description)
+            self.cursor.execute("SELECT id, file_name, embedding FROM cvs")
+            cvs = self.cursor.fetchall()
+            if not cvs:
+                print("⚠️ Không có dữ liệu trong database!")
+                return
+            
+            cv_embeddings = np.vstack([np.frombuffer(cv[2], dtype=np.float32) for cv in cvs])
+            similarities = np.dot(cv_embeddings, job_embedding) / (np.linalg.norm(cv_embeddings, axis=1) * np.linalg.norm(job_embedding))
+            
+            top_n = min(top_candidate, len(cvs))
+            top_indices = np.argsort(similarities)[-top_n:][::-1]
+            
+            print(f"\n🎯 **Top {top_n} ứng viên phù hợp nhất:**")
+            for idx in top_indices:
+                print(f"⭐ **ID:** {cvs[idx][0]} | 📝 **File:** {cvs[idx][1]} | 🔥 **Độ tương đồng:** {similarities[idx]:.4f}")
+        else:
+            if not cvs or similarities is None:
+                return
+            top_n = min(top_candidate, len(cvs))
+            top_indices = np.argsort(similarities)[-top_n:][::-1]
+
+        # Hiển thị ảnh cho tất cả top N ứng viên
+        for idx in top_indices:
+            cv_id, img_path, _ = cvs[idx]
+            similarity = similarities[idx]
+
+            print(f"\n🖼️ Đang kiểm tra ảnh cho ứng viên: {img_path}")
+            if os.path.exists(img_path):
+                img = cv2.imread(img_path)
+                if img is not None:
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    print(f"\n🖼️ **Ứng viên:**\n🆔 **ID:** {cv_id} | 📄 **File:** {img_path} | 🔥 **Độ tương đồng:** {similarity:.4f}")
+                    print(f"📷 Tìm thấy ảnh tại: {img_path}")
+                    plt.figure(figsize=(8, 6))
+                    plt.imshow(img_rgb)
+                    plt.title(f"Candidate: {os.path.basename(img_path)} (Similarity: {similarity:.4f})")
+                    plt.axis('off')
+                    plt.show()
+                else:
+                    print(f"❌ Không thể đọc ảnh tại {img_path}")
+            else:
+                print(f"❌ Không tìm thấy ảnh tại {img_path}")
+
+    def run(self, job_description, top_candidate):
+        start_time = time.time()
+        print("🚀 Bắt đầu pipeline...")
+
+        self.process_images()
+        self.summarize_files()
+        self.clear_database()
+        cv_data = self.load_cv_data()
+        if not cv_data:
+            print("⚠️ Không có dữ liệu CV, pipeline dừng.")
+            return
+        self.store_candidates(cv_data)
+        self.add_embeddings(cv_data)
+        # cvs, similarities = self.compare_job_description(job_description, top_candidate)
+        # self.visualize_best_candidate(cvs, similarities)
+
+        end_time = time.time()
+        print(f"✅ Pipeline hoàn thành. Tổng thời gian: {end_time - start_time:.2f} giây")
+        self.conn.close()
+
+    # Các phương thức còn lại giữ nguyên: clean_text, summarize_text, process_summary, summarize_files, load_cv_data, get_bert_embedding
     def clean_text(self, text):
         text = re.sub(r'[B][a-zA-Z]*[B][a-zA-Z]*\s*', '', text)
         text = re.sub(r'\|.*$', '', text, flags=re.MULTILINE)
@@ -128,7 +271,6 @@ class CVPipeline:
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             list(tqdm(executor.map(self.process_summary, all_txt_files), total=len(all_txt_files), desc="✂️ Tóm tắt"))
 
-    # Bước 3: Xử lý CV và xếp hạng
     def load_cv_data(self):
         cv_data = {}
         txt_files = [os.path.join(root, f) for root, _, files in os.walk(self.summary_output_dir) for f in files if f.endswith(".txt")]
@@ -138,124 +280,14 @@ class CVPipeline:
 
         print(f"📖 Đang đọc {len(txt_files)} file CV...")
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = [executor.submit(lambda p: (os.path.relpath(p, self.summary_output_dir).replace('.txt', ''), open(p, 'r', encoding='utf-8').read().strip()), path) for path in txt_files]
+            futures = [executor.submit(lambda p: (os.path.splitext(os.path.basename(p))[0], open(p, 'r', encoding='utf-8').read().strip()), path) for path in txt_files]
             for future in tqdm(as_completed(futures), total=len(txt_files), desc="📖 Đang đọc CV"):
                 file_name, content = future.result()
                 cv_data[file_name] = content
         return cv_data
-
-    def store_candidate(self, file_name):
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO cvs (file_name) VALUES (?)", (file_name,))
-            conn.commit()
-            conn.close()
-
-    def store_candidates(self, cv_data):
-        print(f"📂 Đang lưu {len(cv_data)} hồ sơ...")
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            list(tqdm(executor.map(self.store_candidate, cv_data.keys()), total=len(cv_data), desc="📂 Đang lưu CV"))
 
     def get_bert_embedding(self, text):
         inputs = self.tokenizer(text, return_tensors="pt", max_length=512, truncation=True, padding=True)
         with torch.no_grad():
             outputs = self.model(**inputs)
         return outputs.last_hidden_state[:, 0, :].squeeze().numpy()
-
-    def process_embedding(self, cv_id, file_name, cv_text):
-        embedding = self.get_bert_embedding(cv_text)
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("UPDATE cvs SET embedding = ? WHERE id = ?", (embedding.tobytes(), cv_id))
-            conn.commit()
-            conn.close()
-
-    def add_embeddings(self, cv_data):
-        self.cursor.execute("SELECT id, file_name FROM cvs WHERE embedding IS NULL")
-        cv_list = [(cv_id, file_name, cv_data[file_name]) for cv_id, file_name in self.cursor.fetchall() if file_name in cv_data]
-        if not cv_list:
-            print("⚠️ Không có CV nào cần tạo embedding!")
-            return
-        print(f"🔄 Đang tạo embeddings cho {len(cv_list)} CV...")
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            list(tqdm(executor.map(lambda x: self.process_embedding(*x), cv_list), total=len(cv_list), desc="🔄 Đang xử lý embeddings"))
-
-    def compare_job_description(self, job_description, top_candidate):
-        job_embedding = self.get_bert_embedding(job_description)
-        self.cursor.execute("SELECT id, file_name, embedding FROM cvs")
-        cvs = self.cursor.fetchall()
-        if not cvs:
-            print("⚠️ Không có dữ liệu trong database!")
-            return [], []
-        
-        cv_embeddings = np.vstack([np.frombuffer(cv[2], dtype=np.float32) for cv in cvs])
-        similarities = np.dot(cv_embeddings, job_embedding) / (np.linalg.norm(cv_embeddings, axis=1) * np.linalg.norm(job_embedding))
-        
-        top_n = min(top_candidate, len(cvs))
-        top_indices = np.argsort(similarities)[-top_n:][::-1]
-        
-        print(f"\n🎯 **Top {top_n} ứng viên phù hợp nhất:**")
-        for idx in top_indices:
-            print(f"⭐ **ID:** {cvs[idx][0]} | 📝 **File:** {cvs[idx][1]} | 🔥 **Độ tương đồng:** {similarities[idx]:.4f}")
-        return cvs, similarities
-
-    def check_image(self, image_path):
-        if os.path.exists(image_path):
-            img = cv2.imread(image_path)
-            if img is not None:
-                return image_path, img
-        return None, None
-
-    def visualize_best_candidate(self, cvs, similarities):
-        if not cvs:
-            return
-        best_idx = np.argmax(similarities)
-        cv_id, file_name, _ = cvs[best_idx]
-        similarity = similarities[best_idx]
-
-        image_extensions = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"]
-        image_paths = [os.path.join(self.image_input_dir, file_name + ext) for ext in image_extensions]
-
-        print(f"\n🖼️ Đang kiểm tra ảnh cho ứng viên tốt nhất: {file_name}")
-        with ThreadPoolExecutor(max_workers=len(image_extensions)) as executor:
-            futures = [executor.submit(self.check_image, path) for path in image_paths]
-            for future in as_completed(futures):
-                image_path, img = future.result()
-                if img is not None:
-                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    print(f"\n🖼️ **Ứng viên xuất sắc nhất:**\n🆔 **ID:** {cv_id} | 📄 **File:** {file_name} | 🔥 **Độ tương đồng:** {similarity:.4f}")
-                    print(f"📷 Tìm thấy ảnh tại: {image_path}")
-                    plt.figure(figsize=(8, 6))
-                    plt.imshow(img_rgb)
-                    plt.title(f"Best Candidate: {os.path.basename(file_name)} (Similarity: {similarity:.4f})")
-                    plt.axis('off')
-                    plt.show()
-                    return
-        print(f"❌ Không tìm thấy ảnh cho {file_name} với các đuôi {image_extensions}")
-
-    def run(self, job_description, top_candidate):
-        start_time = time.time()
-        print("🚀 Bắt đầu pipeline...")
-
-        # Bước 1: Trích xuất văn bản từ ảnh bằng DBNet
-        self.process_images()
-
-        # Bước 2: Tóm tắt văn bản
-        self.summarize_files()
-
-        # Bước 3: Xử lý và xếp hạng CV
-        self.clear_database()
-        cv_data = self.load_cv_data()
-        if not cv_data:
-            print("⚠️ Không có dữ liệu CV, pipeline dừng.")
-            return
-        self.store_candidates(cv_data)
-        self.add_embeddings(cv_data)
-        cvs, similarities = self.compare_job_description(job_description, top_candidate)
-        self.visualize_best_candidate(cvs, similarities)
-
-        end_time = time.time()
-        print(f"✅ Pipeline hoàn thành. Tổng thời gian: {end_time - start_time:.2f} giây")
-        self.conn.close()
