@@ -4,14 +4,24 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QWidget,
                             QVBoxLayout, QHBoxLayout, QTextEdit, QFileDialog, 
                             QProgressBar, QLabel, QMessageBox, QInputDialog)
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QScreen
 
 from Pipline.utils4zero2hero import CVPipeline
+
+# Biến kích thước tùy chỉnh (width, height)
+MAIN_WINDOW_SIZE = (400, 300)  # Kích thước cho MainWindow
+WINDOW2_SIZE = (500, 400)     # Kích thước cho Window2
+WINDOW3_SIZE = (600, 500)     # Kích thước cho Window3
+RESULT_WINDOW_SIZE = (400, 300)  # Kích thước cho ResultWindow
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CV Parser")
-        self.setFixedSize(200, 200)
+        self.setFixedSize(*MAIN_WINDOW_SIZE)  # Sử dụng biến kích thước
+        
+        # Cố định ở giữa màn hình
+        self.center_on_screen()
         
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -29,6 +39,16 @@ class MainWindow(QMainWindow):
         self.window2 = None
         self.window3 = None
         
+    def center_on_screen(self):
+        screen = QApplication.primaryScreen().geometry()
+        screen_width = screen.width()
+        screen_height = screen.height()
+        window_width = self.width()
+        window_height = self.height()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.move(x, y)
+        
     def show_window2(self):
         if self.window2 is None:
             self.window2 = Window2()
@@ -45,7 +65,10 @@ class Window2(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Extract CVs to Database")
-        self.setFixedSize(300, 250)
+        self.setFixedSize(*WINDOW2_SIZE)  # Sử dụng biến kích thước
+        
+        # Cố định ở giữa màn hình
+        self.center_on_screen()
         
         main_layout = QVBoxLayout(self)
         
@@ -66,7 +89,8 @@ class Window2(QWidget):
         main_layout.addWidget(self.progress_bar)
         main_layout.addWidget(self.status_label)
         main_layout.addStretch()
-        main_layout.addLayout(bottom_layout)
+        # Xóa custom_layout vì chưa được định nghĩa
+        main_layout.addLayout(bottom_layout)  # Nếu không cần, xóa dòng này
         
         self.upload_btn.clicked.connect(self.upload_folder_and_extract)
         self.continue_btn.clicked.connect(self.show_window3)
@@ -75,6 +99,16 @@ class Window2(QWidget):
         self.main_window = None
         self.window3 = None
         self.db_path = None
+        
+    def center_on_screen(self):
+        screen = QApplication.primaryScreen().geometry()
+        screen_width = screen.width()
+        screen_height = screen.height()
+        window_width = self.width()
+        window_height = self.height()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.move(x, y)
         
     def upload_folder_and_extract(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Image Folder")
@@ -91,10 +125,25 @@ class Window2(QWidget):
                     self.timer.timeout.connect(self.update_progress)
                     self.timer.start(100)
                     
+                    # Lấy tên thư mục ảnh và thư mục cha
+                    folder_name = os.path.basename(folder)  # e.g., "resumes_img"
+                    parent_dir = os.path.dirname(folder)    # e.g., "...\1_DEMO_only"
+                    
+                    # Tạo đường dẫn cho text_output_dir và summary_output_dir
+                    text_output_base = os.path.join(parent_dir, f"{folder_name}2textoutput")
+                    summary_output_base = os.path.join(parent_dir, f"{folder_name}2textoutput")
+                    
+                    text_output_dir = os.path.join(text_output_base, "text_extracted")
+                    summary_output_dir = os.path.join(summary_output_base, "summaries")
+                    
+                    # Tạo các thư mục nếu chưa tồn tại
+                    os.makedirs(text_output_dir, exist_ok=True)
+                    os.makedirs(summary_output_dir, exist_ok=True)
+                    
                     pipeline = CVPipeline(
                         image_input_dir=folder,
-                        text_output_dir=os.path.join(os.getcwd(), "data_extracted_output", "text_extracted"),
-                        summary_output_dir=os.path.join(os.getcwd(), "data_extracted_output", "summaries"),
+                        text_output_dir=text_output_dir,
+                        summary_output_dir=summary_output_dir,
                         db_path=self.db_path,
                         model_path=os.path.join(os.getcwd(), "db_19_2.6895_3.3356.h5")
                     )
@@ -126,7 +175,10 @@ class Window3(QWidget):
     def __init__(self, initial_db_path=None):
         super().__init__()
         self.setWindowTitle("Search Candidates")
-        self.setFixedSize(400, 350)
+        self.setFixedSize(*WINDOW3_SIZE)  # Sử dụng biến kích thước
+        
+        # Cố định ở giữa màn hình
+        self.center_on_screen()
         
         main_layout = QVBoxLayout(self)
         
@@ -161,6 +213,16 @@ class Window3(QWidget):
             self.db_label.setText(f"Selected Database: {os.path.basename(self.db_path)}")
             self.text_edit1.setEnabled(True)
         
+    def center_on_screen(self):
+        screen = QApplication.primaryScreen().geometry()
+        screen_width = screen.width()
+        screen_height = screen.height()
+        window_width = self.width()
+        window_height = self.height()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.move(x, y)
+        
     def choose_database(self):
         file, _ = QFileDialog.getOpenFileName(self, "Choose Database File", "", "Database Files (*.db)")
         if file:
@@ -189,19 +251,14 @@ class Window3(QWidget):
             QMessageBox.warning(self, "Error", "Please enter a job description!")
             return
         
-        # Gọi visualize_candidates với job_description và top_candidate
         pipeline = CVPipeline(
-            image_input_dir="",  # Không cần khi chỉ visualize
+            image_input_dir="",  
             text_output_dir=os.path.join(os.getcwd(), "data_extracted_output", "text_extracted"),
             summary_output_dir=os.path.join(os.getcwd(), "data_extracted_output", "summaries"),
             db_path=self.db_path,
             model_path=os.path.join(os.getcwd(), "db_19_2.6895_3.3356.h5")
         )
         pipeline.visualize_candidates(job_description=job_desc, top_candidate=top_candidates)
-        
-        # if self.result_window is None:
-        #     self.result_window = ResultWindow()
-        # self.result_window.show()
         
     def back_to_main(self):
         self.main_window = MainWindow()
@@ -211,11 +268,25 @@ class Window3(QWidget):
 class ResultWindow(QWidget):
     def __init__(self):
         super().__init__()
-        # self.setWindowTitle("Result")
-        # self.setFixedSize(200, 200)
-        # layout = QVBoxLayout(self)
-        # label = QLabel("Results will be displayed here")
-        # layout.addWidget(label)
+        self.setWindowTitle("Result")
+        self.setFixedSize(*RESULT_WINDOW_SIZE)  # Sử dụng biến kích thước
+        
+        # Cố định ở giữa màn hình
+        self.center_on_screen()
+        
+        layout = QVBoxLayout(self)
+        label = QLabel("Results will be displayed here")
+        layout.addWidget(label)
+    
+    def center_on_screen(self):
+        screen = QApplication.primaryScreen().geometry()
+        screen_width = screen.width()
+        screen_height = screen.height()
+        window_width = self.width()
+        window_height = self.height()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.move(x, y)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
