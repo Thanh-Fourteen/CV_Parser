@@ -11,7 +11,7 @@ python app.py
 ```
 
 
-## Demo
+## Demo DBNet
 #### input
 ![input_01](datasets/test/input/01.png)
 ![input_02](datasets/test/input/02.jpg)
