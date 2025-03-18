@@ -1,15 +1,8 @@
 
-## Inference
+## Inference DBNet
 ```bash
 python inference.py
 ```
-
-
-## Train
-```bash
-python app.py
-```
-
 
 ## Demo DBNet
 #### input
@@ -24,6 +17,10 @@ python app.py
 ![output_03](datasets/test/output/03.jpeg)
 ![output_04](datasets/test/output/04.jpg)
 
+## Run Project
+```bash
+python app.py
+```
 
 # References
 This is a tensorflow2.x implementation of "Real-time Scene Text Detection with Differentiable Binarization".
